@@ -1,0 +1,58 @@
+name: Build AutoNamer
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout GiftMail (for libs)
+        uses: actions/checkout@v4
+        with:
+          repository: ferrles124/GiftMail
+          path: giftmail-temp
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Prepare libs
+        run: |
+          mkdir -p libs
+          cp giftmail-temp/StardewValley.dll libs/StardewValley.dll
+          cp giftmail-temp/libs/StardewModdingAPI.dll libs/StardewModdingAPI.dll
+          cp giftmail-temp/libs/MonoGame.Framework.dll libs/MonoGame.Framework.dll
+          cp giftmail-temp/libs/xTile.dll libs/xTile.dll
+
+      - name: Check libs
+        run: |
+          ls -la libs/
+          file libs/*.dll
+
+      - name: Restore
+        run: dotnet restore AutoNamer.csproj
+
+      - name: Build AutoNamer
+        run: dotnet build AutoNamer.csproj --configuration Release
+
+      - name: Prepare mod package
+        run: |
+          mkdir -p package/AutoNamer
+          cp bin/Release/net8.0/AutoNamer.dll package/AutoNamer/
+          cp manifest.json package/AutoNamer/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoNamer
+          path: package/
+          retention-days: 30
