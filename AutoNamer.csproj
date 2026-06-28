@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="giftmail-temp/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Lib.Harmony" Version="2.3.3" />
   </ItemGroup>
 
