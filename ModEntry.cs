@@ -13,7 +13,7 @@ namespace AutoNamer
         public override void Entry(IModHelper helper)
         {
             _helper = helper;
-            var harmony = new Harmony(this.ModManifest.UniqueID);
+            var harmony = new Harmony("Mehmet.AutoNamer");
 
             foreach (var ctor in typeof(NamingMenu).GetConstructors(
                 BindingFlags.Public | BindingFlags.Instance))
