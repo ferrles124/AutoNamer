@@ -3,6 +3,7 @@ using StardewModdingAPI;
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace AutoNamer
 {
@@ -16,36 +17,31 @@ namespace AutoNamer
             _monitor = this.Monitor;
             var harmony = new Harmony("Mehmet.AutoNamer");
 
-            // Waystones DLL'i yüklendiyse, içindeki WaystoneNameMenu tipini bul
             var waystonesAssembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a => a.GetName().Name == "StardewWaystones");
 
             if (waystonesAssembly == null)
             {
-                _monitor.Log("Stardew Waystones bulunamadı, AutoNamer bu oturumda pasif.", LogLevel.Warn);
+                _monitor.Log("Stardew Waystones bulunamadi.", LogLevel.Warn);
                 return;
             }
 
-            var menuType = waystonesAssembly.GetTypes()
-                .FirstOrDefault(t => t.Name == "WaystoneNameMenu");
-
+            var menuType = waystonesAssembly.GetType("StardewWaystones.Code.WaystoneNameMenu");
             if (menuType == null)
             {
-                _monitor.Log("WaystoneNameMenu tipi bulunamadı, AutoNamer bu oturumda pasif.", LogLevel.Warn);
+                _monitor.Log("WaystoneNameMenu tipi bulunamadi.", LogLevel.Warn);
                 return;
             }
 
-            // Tüm public/non-public constructor'ları yakala
-            foreach (var ctor in menuType.GetConstructors(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-            {
-                harmony.Patch(
-                    original: ctor,
-                    postfix: new HarmonyMethod(typeof(ModEntry), nameof(WaystoneNameMenu_Postfix))
-                );
-            }
+            var ctor = menuType.GetConstructors(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).First();
 
-            _monitor.Log("AutoNamer, WaystoneNameMenu'ye basariyla baglandi.", LogLevel.Info);
+            harmony.Patch(
+                original: ctor,
+                postfix: new HarmonyMethod(typeof(ModEntry), nameof(WaystoneNameMenu_Postfix))
+            );
+
+            _monitor.Log("AutoNamer, WaystoneNameMenu constructor'ina baglandi.", LogLevel.Info);
         }
 
         private static void WaystoneNameMenu_Postfix(object __instance)
@@ -56,17 +52,20 @@ namespace AutoNamer
                 string newName = $"Isim{_counter}";
 
                 var type = __instance.GetType();
+
+                // inputText bir StringBuilder, string degil!
                 var field = type.GetField("inputText",
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
-                if (field != null)
+                if (field?.GetValue(__instance) is StringBuilder sb)
                 {
-                    field.SetValue(__instance, newName);
+                    sb.Clear();
+                    sb.Append(newName);
                     _monitor?.Log($"Otomatik isim atandi: {newName}", LogLevel.Info);
                 }
                 else
                 {
-                    _monitor?.Log("inputText alani bulunamadi.", LogLevel.Warn);
+                    _monitor?.Log("inputText StringBuilder olarak bulunamadi.", LogLevel.Warn);
                 }
             }
             catch (Exception ex)
