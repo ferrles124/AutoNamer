@@ -1,0 +1,10 @@
+{
+  "Name": "AutoNamer",
+  "Author": "Mehmet",
+  "Version": "1.0.0",
+  "Description": "Isim ekranlarini otomatik dolduran kucuk yardimci mod",
+  "UniqueID": "Mehmet.AutoNamer",
+  "EntryDll": "AutoNamer.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
