@@ -1,10 +1,11 @@
 using HarmonyLib;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
-using StardewValley;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text;
 using Microsoft.Xna.Framework.Input;
 
@@ -18,12 +19,6 @@ namespace AutoNamer
         private static object? _pendingMenu = null;
         private static int _ticksWaited = 0;
         private const int TicksToWait = 120;
-
-        private static FieldInfo? _waystoneManagerField;
-        private static MethodInfo? _setLastActivatedTile;
-        private static MethodInfo? _getWaystoneName;
-        private static object? _waystoneManagerInstance;
-        private static object? _waystonesModEntryInstance;
 
         public override void Entry(IModHelper helper)
         {
@@ -39,68 +34,50 @@ namespace AutoNamer
                 return;
             }
 
+            // --- 1) Isim ekranini otomatik doldurma + Enter (oncekiyle ayni) ---
             var menuType = waystonesAssembly.GetType("StardewWaystones.Code.WaystoneNameMenu");
             if (menuType != null)
             {
                 var ctor = menuType.GetConstructors(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).First();
                 harmony.Patch(ctor, postfix: new HarmonyMethod(typeof(ModEntry), nameof(WaystoneNameMenu_Postfix)));
+                _monitor.Log("AutoNamer: isim ekrani yamasi uygulandi.", LogLevel.Info);
+            }
+
+            // --- 2) MouseRight (1001) -> MouseLeft (1000) yamasi ---
+            var modEntryType = waystonesAssembly.GetType("StardewWaystones.ModEntry");
+            var onButtonPressed = modEntryType?.GetMethod("OnButtonPressed",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (onButtonPressed != null)
+            {
+                harmony.Patch(onButtonPressed,
+                    transpiler: new HarmonyMethod(typeof(ModEntry), nameof(OnButtonPressed_Transpiler)));
+                _monitor.Log("AutoNamer: sag-tik -> sol-tik yamasi uygulandi.", LogLevel.Info);
+            }
+            else
+            {
+                _monitor.Log("OnButtonPressed metodu bulunamadi, tiklama yamasi uygulanamadi.", LogLevel.Warn);
             }
 
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
-            helper.Events.Input.ButtonPressed += OnButtonPressed;
-
-            _monitor.Log("AutoNamer hazir (debug modu acik).", LogLevel.Info);
         }
 
-        // === DEBUG: her tusu logla ===
-        private static void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
+        // Waystones'in kendi OnButtonPressed kodundaki "1001" (MouseRight) sabitini
+        // "1000" (MouseLeft) ile degistirir. Mantigin tamamini birebir korur.
+        private static IEnumerable<CodeInstruction> OnButtonPressed_Transpiler(IEnumerable<CodeInstruction> instructions)
         {
-            if (!Context.IsWorldReady) return;
-
-            var grabTile = e.Cursor.GrabTile;
-            var loc = Game1.currentLocation;
-
-            bool hasObject = loc.objects.TryGetValue(grabTile, out var obj);
-
-            _monitor?.Log($"[DEBUG] Tus: {e.Button} ({(int)e.Button}) | Tile: {grabTile} | Objeli mi: {hasObject} | Obje adi: {(hasObject ? obj?.Name : "yok")}", LogLevel.Info);
-
-            if (!hasObject || obj == null) return;
-
-            // bigCraftable + isim iceriginde "waystone" geciyorsa (kucuk/buyuk harf farketmeksizin)
-            bool isBigCraftable = obj.bigCraftable.Value;
-            bool nameMatches = obj.Name != null && obj.Name.ToLower().Contains("waystone");
-
-            if (isBigCraftable && nameMatches)
+            foreach (var instruction in instructions)
             {
-                _monitor?.Log($"[DEBUG] Waystone tespit edildi! Buton: {e.Button}", LogLevel.Info);
-                TryOpenWaystoneMenu(grabTile);
-            }
-        }
-
-        private static void TryOpenWaystoneMenu(Microsoft.Xna.Framework.Vector2 tile)
-        {
-            try
-            {
-                var waystonesAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                    .FirstOrDefault(a => a.GetName().Name == "StardewWaystones");
-                if (waystonesAssembly == null) return;
-
-                // ModEntry instance'ini bul (SMAPI mod listesi uzerinden degil, static/singleton arama)
-                var modEntryType = waystonesAssembly.GetType("StardewWaystones.ModEntry");
-                if (modEntryType == null)
+                if (instruction.opcode == OpCodes.Ldc_I4 && instruction.operand is int value && value == 1001)
                 {
-                    _monitor?.Log("[DEBUG] StardewWaystones.ModEntry tipi bulunamadi.", LogLevel.Warn);
-                    return;
+                    _monitor?.Log("Transpiler: 1001 (MouseRight) -> 1000 (MouseLeft) degistirildi.", LogLevel.Info);
+                    yield return new CodeInstruction(OpCodes.Ldc_I4, 1000);
                 }
-
-                // waystoneManager field'i static degil, instance'a ihtiyacimiz var.
-                // SMAPI'nin kendi mod kayitlarindan instance'i cekmemiz gerekebilir; basit yontem: tum static field/event uzerinden bulmaya calis
-                _monitor?.Log("[DEBUG] Menu acma denemesi yapildi (manuel tetikleme henuz tamamlanmadi, sadece tespit calisiyor).", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                _monitor?.Log($"[DEBUG] TryOpenWaystoneMenu hata: {ex}", LogLevel.Error);
+                else
+                {
+                    yield return instruction;
+                }
             }
         }
 
